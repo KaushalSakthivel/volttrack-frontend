@@ -337,7 +337,9 @@ function App() {
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          setStations(stations.map(st => st && st.id === station.id ? data.updatedStation : st));
+          setStations(prevStations => 
+            prevStations.map(st => st && st.id == station.id ? data.updatedStation : st)
+          );
           
           setActiveBooking({
             stationId: station.id,
@@ -345,6 +347,9 @@ function App() {
             location: station.location,
             timeReserved: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           });
+          
+          setFreezeActive(false);
+          setFreezeStationId(null);
           
           setBookingTimeRemaining(3600);
           setIsBufferPhase(false);
