@@ -533,7 +533,7 @@ function App() {
                           style={{ padding: '8px 14px', backgroundColor: isFull && !isFrozenForMe ? '#2d3748' : '#00e676', color: isFull && !isFrozenForMe ? '#718096' : '#0a0a0c', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: isFull && !isFrozenForMe ? 'not-allowed' : 'pointer' }}
                         >
                           {/* CONTEXTUAL STATE LABEL RE-STABILIZATION LOGIC */}
-                          {isFrozenForMe ? (activeBooking && activeBooking.stationId === station.id ? 'Secured' : 'Rebook') : isFull ? 'Locked' : 'Inspect'}
+                          {isFrozenForMe ? (activeBooking && activeBooking.stationId == station.id ? 'Secured' : 'Rebook') : isFull ? 'Locked' : 'Inspect'}
                         </button>
                       </td>
                     </tr>
