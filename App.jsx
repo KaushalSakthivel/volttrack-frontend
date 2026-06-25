@@ -155,10 +155,20 @@ function App() {
   // --- AUTOMATED FORCED TIMEOUT CLEANUP ---
   const executeHardExpiryDrop = () => {
     if (!activeBooking) return;
-    setStations(prev => prev.map(st => {
-      if (!st) return st;
-      return st.id === activeBooking.stationId ? { ...st, bookedSlots: Math.max(0, st.bookedSlots - 1) } : st;
-    }));
+    const stationId = activeBooking.stationId;
+
+    fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setStations(prev => prev.map(st => st && st.id == stationId ? data.updatedStation : st));
+        }
+      })
+      .catch(err => console.error("Expiry drop network telemetry fault:", err));
+
     setActiveBooking(null);
     setIsBufferPhase(false);
     setBufferElapsedSeconds(0);
@@ -168,10 +178,20 @@ function App() {
   // --- MANUAL VOID INTERRUPT FOR FREEZE STATE ---
   const handleManualVoidFreeze = () => {
     if (!freezeActive) return;
-    setStations(stations.map(st => {
-      if (!st) return st;
-      return st.id === freezeStationId ? { ...st, bookedSlots: Math.max(0, st.bookedSlots - 1) } : st;
-    }));
+    const stationId = freezeStationId;
+
+    fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setStations(prev => prev.map(st => st && st.id == stationId ? data.updatedStation : st));
+        }
+      })
+      .catch(err => console.error("Manual freeze void sync error:", err));
+
     setFreezeActive(false);
     setFreezeStationId(null);
     setFreezeExpiredNotice(false);
@@ -370,17 +390,43 @@ function App() {
   const handleAdaptiveCancellation = () => {
     if (!activeBooking) return;
 
+    const stationId = activeBooking.stationId;
+
     if (!isBufferPhase) {
-      setFreezeStationId(activeBooking.stationId);
+      // Fire backend synchronization endpoint loop cleanly to clear space
+      fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setStations(prevStations =>
+              prevStations.map(st => st && st.id == stationId ? data.updatedStation : st)
+            );
+          }
+        })
+        .catch(err => console.error("Cancellation network database sync error:", err));
+
+      setFreezeStationId(stationId);
       setFreezeTimer(300); 
       setFreezeExpiredNotice(false);
       setFreezeActive(true);
       alert("Core Window Cancellation Confirmed: Your 5-Minute Freeze Time has started. No outside vehicle can secure this slot until your countdown timer expires.");
     } else {
-      setStations(stations.map(st => {
-        if (!st) return st;
-        return st.id === activeBooking.stationId ? { ...st, bookedSlots: Math.max(0, st.bookedSlots - 1) } : st;
-      }));
+      fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setStations(prevStations =>
+              prevStations.map(st => st && st.id == stationId ? data.updatedStation : st)
+            );
+          }
+        })
+        .catch(err => console.error("Cancellation network database sync error:", err));
       
       const selectedPrefText = currentUser?.preference === 'Wallet_Auto' 
         ? "Linked Integrated Digital Wallet (Auto-Deduct)" 
@@ -514,7 +560,7 @@ function App() {
                     <tr key={station.id} style={{ borderBottom: '1px solid #1a1b20', backgroundColor: isFrozenForMe ? 'rgba(0,230,118,0.03)' : 'transparent' }}>
                       <td style={{ padding: '16px 12px' }}>
                         <span style={{ fontWeight: '600', color: '#fff', fontSize: '1rem' }}>{station.name}</span>
-                        {isFrozenForMe && <span style={{ marginLeft: '8px', fontSize: '0.7rem', backgroundColor: '#00e676', color: '#0a0a0c', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>RE-BOOK LOCK HELD</span>}
+                        {isFrozenForMe && <span style={{ marginLeft: '8px', fontSize: '0.70rem', backgroundColor: '#00e676', color: '#0a0a0c', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>RE-BOOK LOCK HELD</span>}
                         <div style={{ fontSize: '0.8rem', color: '#a0aec0', marginTop: '4px' }}>📍 {station.location}</div>
                       </td>
                       <td style={{ padding: '16px 12px' }}>
