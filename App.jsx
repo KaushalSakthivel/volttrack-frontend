@@ -23,16 +23,13 @@ function App() {
   const [authInput, setAuthInput] = useState({ 
     name: '', 
     evNo: '', 
-    phone: '', // Mobile number state
+    phone: '', 
     city: 'Karur', 
     paymentPreference: '' 
   });
 
-  // --- LOCAL HISTORY SUGGESTION REGISTRY ARRAYS ---
-  const [pastRegistrations, setPastRegistrations] = useState([
-    { name: "Kaushal Sakthivel", evNo: "TN-47-AA-1234", phone: "9876543210", city: "Karur", preference: "UPI_Lockout" },
-    { name: "Sakthivel Kumar", evNo: "TN-47-B-5678", phone: "8765432109", city: "Karur", preference: "Wallet_Auto" }
-  ]);
+  // --- LOCAL HISTORY SUGGESTIONS CLEARED AS REQUESTED ---
+  const [pastRegistrations, setPastRegistrations] = useState([]);
 
   // --- DROP-DOWN SUGGESTION VISIBILITY STATES ---
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -43,7 +40,7 @@ function App() {
   const [errors, setErrors] = useState({
     name: '',
     evNo: '',
-    phone: '', // Mobile error state
+    phone: '', 
     city: ''
   });
 
@@ -54,10 +51,11 @@ function App() {
   const [activeBooking, setActiveBooking] = useState(null);
   
   // --- REAL-TIME LIVE LIFECYCLE ENGINE TIMERS ---
-  const [bookingTimeRemaining, setBookingTimeRemaining] = useState(3600); // 1 Hour standard duration
+  const [bookingTimeRemaining, setBookingTimeRemaining] = useState(3600); 
   const [isBufferPhase, setIsBufferPhase] = useState(false);
   const [bufferElapsedSeconds, setBufferElapsedSeconds] = useState(0);
   const [accruedFine, setAccruedFine] = useState(0);
+  const [lastLoggedMinute, setLastLoggedMinute] = useState(0);
 
   // --- EXCLUSIVE 5-MINUTE ADVANTAGE FREEZE STATES ---
   const [freezeActive, setFreezeActive] = useState(false);
@@ -67,33 +65,6 @@ function App() {
 
   // --- CENTRAL REGISTRY DATA MATRIX ---
   const [stations, setStations] = useState([]);
-
-  const handleBookSlot = (stationId) => {
-    fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/book`, {
-      method: 'POST',
-    })
-      .then((response) => {
-        if (!response.ok) {
-          return response.json().then((err) => { throw new Error(err.error || "Failed to book slot.") });
-        }
-        return response.json();
-      })
-      .then((updatedData) => {
-        if (updatedData.success) {
-          setStations((prevStations) => 
-            prevStations.map((station) => {
-              if (!station) return station; // Safety check: skip null rows
-              return station.id === stationId ? updatedData.updatedStation : station;
-            })
-          );
-          alert("Slot successfully locked in memory!");
-        }
-      })
-      .catch((error) => {
-        console.error("Error booking slot:", error);
-        alert(error.message || "Grid Conflict: Operational limit reached.");
-      });
-  };
 
   // --- BACKGROUND SCROLL MANAGEMENT ---
   useEffect(() => {
@@ -122,11 +93,23 @@ function App() {
         } else {
           setBufferElapsedSeconds((prev) => {
             const nextSecs = prev + 1;
+            const currentMins = Math.ceil(nextSecs / 60);
+            const computedFine = currentMins * 5;
+
+            if (currentMins !== lastLoggedMinute) {
+              setLastLoggedMinute(currentMins);
+              fetch('https://volttrack-server.onrender.com/api/audit/fine', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: currentUser?.name, minutes: currentMins, fineAmount: computedFine })
+              }).catch(err => console.error(err));
+            }
+
             if (nextSecs >= 900) {
               alert("Telemetry Timeout: 15-Minute absolute buffer window completely exhausted. Booking dropped. Account flagged for settlement collection.");
               executeHardExpiryDrop();
             }
-            setAccruedFine(Math.ceil(nextSecs / 60) * 5);
+            setAccruedFine(computedFine);
             return nextSecs;
           });
         }
@@ -134,7 +117,7 @@ function App() {
     }
 
     return () => clearInterval(lifecycleInterval);
-  }, [activeBooking, isBufferPhase]);
+  }, [activeBooking, isBufferPhase, lastLoggedMinute, currentUser]);
 
   // --- EXCLUSIVE LOCK FREEZE ENGINE LOOP ---
   useEffect(() => {
@@ -159,20 +142,22 @@ function App() {
 
     fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: currentUser, type: 'HARD_EXPIRY' })
     })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          setStations(prev => prev.map(st => st && st.id == stationId ? data.updatedStation : st));
+          setStations(prev => prev.map(st => st && String(st.id) === String(stationId) ? data.updatedStation : st));
         }
       })
-      .catch(err => console.error("Expiry drop network telemetry fault:", err));
+      .catch(err => console.error("Expiry drop network fault:", err));
 
     setActiveBooking(null);
     setIsBufferPhase(false);
     setBufferElapsedSeconds(0);
     setBookingTimeRemaining(3600);
+    setLastLoggedMinute(0);
   };
 
   // --- MANUAL VOID INTERRUPT FOR FREEZE STATE ---
@@ -182,12 +167,13 @@ function App() {
 
     fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: currentUser, type: 'MANUAL_VOID' })
     })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          setStations(prev => prev.map(st => st && st.id == stationId ? data.updatedStation : st));
+          setStations(prev => prev.map(st => st && String(st.id) === String(stationId) ? data.updatedStation : st));
         }
       })
       .catch(err => console.error("Manual freeze void sync error:", err));
@@ -205,7 +191,6 @@ function App() {
 
     switch (name) {
       case 'name': {
-        setShowNameSuggestions(true);
         const nameRegex = /^[A-Za-z\s]*$/;
         if (!nameRegex.test(value)) {
           setErrors(prev => ({ ...prev, name: '⚠️ Invalid Character: Only alphabetical letters are authorized.' }));
@@ -217,7 +202,6 @@ function App() {
         break;
       }
       case 'evNo': {
-        setShowEvSuggestions(true);
         if (value.trim() === '') {
           setErrors(prev => ({ ...prev, evNo: '' }));
           break;
@@ -270,7 +254,6 @@ function App() {
     }
   };
 
-  // --- RESPONSIVE DESELECTABLE INTERCEPTOR HANDLER ---
   const handlePreferenceToggle = (targetMode) => {
     if (authInput.paymentPreference === targetMode) {
       setAuthInput(prev => ({ ...prev, paymentPreference: '' }));
@@ -279,27 +262,9 @@ function App() {
     }
   };
 
-  // --- SUGGESTION POPULATE ACTION ---
-  const applyPastProfileSuggestion = (profile) => {
-    setAuthInput({
-      name: profile.name,
-      evNo: profile.evNo,
-      phone: profile.phone || '',
-      city: profile.city,
-      paymentPreference: profile.preference
-    });
-    setErrors({ name: '', evNo: '', phone: '', city: '' });
-    setShowNameSuggestions(false);
-    setShowEvSuggestions(false);
-  };
-
   const handleRegisterSubmit = (e) => {
     e.preventDefault();
-    
-    if (errors.name || errors.evNo || errors.phone || errors.city || !authInput.paymentPreference) {
-      alert("Registration Denied: Please reconcile all highlighted operational telemetry faults first.");
-      return;
-    }
+    if (isFormInvalid) return;
 
     const savedRecord = {
       name: authInput.name.trim(), 
@@ -315,7 +280,7 @@ function App() {
       body: JSON.stringify(savedRecord)
     })
       .then(res => res.json())
-      .then(data => {
+      .then(() => {
         setCurrentUser(savedRecord);
         setIsLoggedIn(true);
         setShowRegister(false);
@@ -324,7 +289,8 @@ function App() {
   };
 
   const handleMockLogin = () => {
-    setCurrentUser({ name: "Guest Driver", evNo: "TN-47-XX-9999", phone: "9474747474", city: "Karur", preference: "UPI_Lockout" });
+    const mockDriver = { name: "Kaushal Sakthivel", evNo: "TN-47-XX-9999", phone: "9474747474", city: "Karur", preference: "UPI_Lockout" };
+    setCurrentUser(mockDriver);
     setIsLoggedIn(true);
   };
 
@@ -338,27 +304,28 @@ function App() {
   const executeBooking = (station) => {
     if (!station) return;
     if (!isLoggedIn) {
-      alert("Security Protocol: Registration node missing. Please Sign In or Create an Account at the top right.");
+      alert("Security Protocol: Registration profile node missing. Please Sign In or Register at the top right.");
       return;
     }
     if (activeBooking) {
       alert("Grid Conflict: You already hold an active station reservation slot.");
       return;
     }
-    if (freezeActive && freezeStationId !== station.id) {
+    if (freezeActive && String(freezeStationId) !== String(station.id)) {
       alert("System Lockout: Another profile's active freeze advantage is protecting this specific node pipeline.");
       return;
     }
 
     fetch(`https://volttrack-server.onrender.com/api/stations/${station.id}/book`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: currentUser })
     })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
           setStations(prevStations => 
-            prevStations.map(st => st && st.id == station.id ? data.updatedStation : st)
+            prevStations.map(st => st && String(st.id) === String(station.id) ? data.updatedStation : st)
           );
           
           setActiveBooking({
@@ -370,39 +337,38 @@ function App() {
           
           setFreezeActive(false);
           setFreezeStationId(null);
-          
           setBookingTimeRemaining(3600);
           setIsBufferPhase(false);
           setBufferElapsedSeconds(0);
           setAccruedFine(0);
+          setLastLoggedMinute(0);
           setSelectedStation(null);
         } else {
           alert("Grid Sync Refused: " + (data.error || "Unknown allocation mismatch."));
         }
       })
       .catch(err => {
-        console.error("Booking loop network telemetry fault:", err);
-        alert("Connection Error: Could not sync reservation to grid telemetry.");
+        console.error("Booking looping fault:", err);
+        alert("Connection Error: Could not sync reservation to grid infrastructure.");
       });
   };
   
   // --- ADAPTIVE CONTEXTUAL CANCELLATION CONTROLLER ---
   const handleAdaptiveCancellation = () => {
     if (!activeBooking) return;
-
     const stationId = activeBooking.stationId;
 
     if (!isBufferPhase) {
-      // Fire backend synchronization endpoint loop cleanly to clear space
       fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: currentUser, type: 'CORE_CANCEL' })
       })
         .then(res => res.json())
         .then(data => {
           if (data.success) {
             setStations(prevStations =>
-              prevStations.map(st => st && st.id == stationId ? data.updatedStation : st)
+              prevStations.map(st => st && String(st.id) === String(stationId) ? data.updatedStation : st)
             );
           }
         })
@@ -412,17 +378,18 @@ function App() {
       setFreezeTimer(300); 
       setFreezeExpiredNotice(false);
       setFreezeActive(true);
-      alert("Core Window Cancellation Confirmed: Your 5-Minute Freeze Time has started. No outside vehicle can secure this slot until your countdown timer expires.");
+      alert("Core Window Cancellation Confirmed: Your 5-Minute Freeze Time has started. Rebook protection enabled.");
     } else {
       fetch(`https://volttrack-server.onrender.com/api/stations/${stationId}/cancel`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: currentUser, type: 'BUFFER_CANCEL', fine: accruedFine })
       })
         .then(res => res.json())
         .then(data => {
           if (data.success) {
             setStations(prevStations =>
-              prevStations.map(st => st && st.id == stationId ? data.updatedStation : st)
+              prevStations.map(st => st && String(st.id) === String(stationId) ? data.updatedStation : st)
             );
           }
         })
@@ -434,24 +401,21 @@ function App() {
 
       alert(`Buffer Penalty Settlement Mandate:\n\n` +
             `Since you cancelled during the active buffer window, you must settle the accrued fine of ₹${accruedFine}.\n\n` +
-            `Transaction Processing Route Authorized: ${selectedPrefText} as configured during your profile node registration setup.\n\n` +
-            `Note: The 5-Minute Freeze advantage is voided. Slot is now exposed to the public pool.`);
+            `Transaction Processing Route Authorized: ${selectedPrefText}.\n\n` +
+            `Note: The 5-Minute Freeze advantage is voided.`);
     }
 
     setActiveBooking(null);
+    setLastLoggedMinute(0);
   };
 
-  // --- CENTRAL FILTER LOGIC ENGINE ---
   const filteredStations = stations.filter(station => {
     if (!station || !station.name || !station.location) return false;
-
     const matchesSearch = station.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           station.location.toLowerCase().includes(searchTerm.toLowerCase());
-
     const matchesPower = powerFilter === 'All' || 
                          (powerFilter === 'DC' && station.type && station.type.toLowerCase().includes('dc')) || 
                          (powerFilter === 'AC' && station.type && station.type.toLowerCase().includes('ac'));
-
     return matchesSearch && matchesPower;
   });
 
@@ -481,18 +445,18 @@ function App() {
           {!isLoggedIn ? (
             <>
               <button onClick={handleMockLogin} style={{ background: 'transparent', border: 'none', color: '#00e676', cursor: 'pointer', fontWeight: '600' }}>Quick Sign In</button>
-              <button onClick={handleOpenRegistrationWindow} style={{ backgroundColor: '#00e676', color: '#0a0a0c', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Register Node</button>
+              <button onClick={handleOpenRegistrationWindow} style={{ backgroundColor: '#00e676', color: '#0a0a0c', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Register</button>
             </>
           ) : (
             <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.85rem', color: '#a0aec0' }}>EV Node Bound: <strong style={{ color: '#00e676' }}>{currentUser?.evNo} ({currentUser?.city})</strong></span>
+              <span style={{ fontSize: '0.85rem', color: '#a0aec0' }}>Bound Terminal: <strong style={{ color: '#00e676' }}>{currentUser?.name} ({currentUser?.evNo})</strong></span>
               <button onClick={() => { setIsLoggedIn(false); setActiveBooking(null); setFreezeActive(false); }} style={{ background: '#1f2937', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>Disconnect</button>
             </div>
           )}
         </div>
       </nav>
 
-      {/* DISCLAIMERS COHORT HEADER */}
+      {/* DISCLAIMERS HEADER */}
       <div style={{ backgroundColor: '#111216', border: '1px solid #1f2937', padding: '25px', borderRadius: '12px', marginBottom: '30px', textAlign: 'left' }}>
         <h2 style={{ margin: '0 0 5px 0', fontSize: '1.3rem', color: '#fff' }}>Welcome to the VoltTrack Infrastructure Network</h2>
         <p style={{ margin: '0 0 20px 0', fontSize: '0.9rem', color: '#a0aec0', maxWidth: '800px' }}>
@@ -501,27 +465,25 @@ function App() {
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.8rem', borderTop: '1px solid #1a1b20', paddingTop: '15px' }}>
           <div style={{ lineHeight: '1.5', color: '#718096' }}>
-            <strong style={{ color: '#ef4444', display: 'inline-block', marginRight: '6px' }}>🚨 DISCLAIMER 1 (ARRIVAL TIMEFRAME):</strong> 
-            All station reservations trigger a fixed 1-Hour operational target arrival slot window. If arrival conditions are delayed, a strict <strong>15-Minute maximum dynamic buffer countdown</strong> will initialize. Fines accrue per-minute during this phase. Unused buffer timers drop allocation automatically.
+            <strong style={{ color: '#ef4444', display: 'inline-block', marginRight: '6px' }}>🚨 ARRIVAL TIMEFRAME TARGET:</strong> 
+            All reservations hold a target arrival window. Exceeding core limits initializes a strict 15-Minute buffer countdown with dynamic fine processing.
           </div>
-          
           <div style={{ lineHeight: '1.5', color: '#718096' }}>
-            <strong style={{ color: '#00e676', display: 'inline-block', marginRight: '6px' }}>💎 DISCLAIMER 2 (ADVANTAGE POLICY CLAUSE):</strong> 
-            Cancelling your reservation within your 1-Hour Core Window triggers an exclusive <strong>5-Minute Freeze Advantage</strong>, locking that specific slot to your profile for seamless re-booking. If you enter the 15-Minute Dynamic Buffer Countdown Phase, the freeze advantage is completely forfeited.
+            <strong style={{ color: '#00e676', display: 'inline-block', marginRight: '6px' }}>🛡️ PRIORITY ADVANTAGE LOCK:</strong> 
+            Cancelling your reservation within the Core Window triggers a 5-Minute lock advantage, protecting that specific space exclusively for your quick re-routing.
           </div>
         </div>
       </div>
 
-      {/* RESPONSIVE LAYOUT GRID */}
+      {/* MAIN DATA PLATFORM LAYOUT */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '30px', textAlign: 'left' }}>
         
-        {/* LEFT COLUMN COMPONENTS */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
           <div style={{ backgroundColor: '#111216', border: '1px solid #1f2937', borderRadius: '12px', padding: '20px' }}>
             <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
               <input 
                 type="text" 
-                placeholder="Filter via highway corridor, hub name, or localized landmark locations..." 
+                placeholder="Search highway corridors, hub points, or local landmarks..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{ flex: 1, padding: '12px 16px', borderRadius: '8px', backgroundColor: '#1a1b20', border: '1px solid #2d3748', color: '#fff', fontSize: '0.95rem' }}
@@ -554,7 +516,10 @@ function App() {
                   if (!station) return null;
                   const availableSlots = station.totalSlots - station.bookedSlots;
                   const isFull = availableSlots === 0;
-                  const isFrozenForMe = freezeActive && freezeStationId === station.id;
+                  const isFrozenForMe = freezeActive && String(freezeStationId) === String(station.id);
+
+                  // Fixed visual boundary rules: changes text color to red if availability is at critical boundary
+                  const statusColor = (isFull && !isFrozenForMe) || (availableSlots === 1 && !activeBooking) ? '#ef4444' : '#00e676';
 
                   return (
                     <tr key={station.id} style={{ borderBottom: '1px solid #1a1b20', backgroundColor: isFrozenForMe ? 'rgba(0,230,118,0.03)' : 'transparent' }}>
@@ -568,8 +533,8 @@ function App() {
                         <span style={{ fontSize: '0.75rem', color: '#00e676', backgroundColor: 'rgba(0,230,118,0.1)', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', marginTop: '4px' }}>{station.type}</span>
                       </td>
                       <td style={{ padding: '16px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: '500', color: isFull ? '#ef4444' : '#00e676' }}>
-                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isFull ? '#ef4444' : '#00e676', display: 'inline-block' }}></span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: '500', color: statusColor }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusColor, display: 'inline-block' }}></span>
                           {isFull && !isFrozenForMe ? (
                             <span>Fully Occupied ({station.bookedSlots}/{station.totalSlots})</span>
                           ) : (
@@ -580,11 +545,10 @@ function App() {
                       <td style={{ padding: '16px 12px', textAlign: 'right' }}>
                         <button 
                           onClick={() => { setSelectedStationForModal(station); setSelectedStation(station); }}
-                          disabled={isFull && !isFrozenForMe}
-                          style={{ padding: '8px 14px', backgroundColor: isFull && !isFrozenForMe ? '#2d3748' : '#00e676', color: isFull && !isFrozenForMe ? '#718096' : '#0a0a0c', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: isFull && !isFrozenForMe ? 'not-allowed' : 'pointer' }}
+                          disabled={isFull && !isFrozenForMe && !isLoggedIn}
+                          style={{ padding: '8px 14px', backgroundColor: isFull && !isFrozenForMe ? '#2d3748' : '#00e676', color: isFull && !isFrozenForMe ? '#718096' : '#0a0a0c', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}
                         >
-                          {/* CONTEXTUAL STATE LABEL RE-STABILIZATION LOGIC */}
-                          {isFrozenForMe ? (activeBooking && activeBooking.stationId == station.id ? 'Secured' : 'Rebook') : isFull ? 'Locked' : 'Inspect'}
+                          {isFrozenForMe ? (activeBooking && String(activeBooking.stationId) === String(station.id) ? 'Secured' : 'Rebook') : isFull ? 'Locked' : 'Inspect'}
                         </button>
                       </td>
                     </tr>
@@ -595,26 +559,26 @@ function App() {
           </div>
         </div>
 
-        {/* RIGHT CONTROL SIDEBAR FEED */}
+        {/* SIDE PANEL INFRASTRUCTURE MANAGEMENT */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
           <div style={{ backgroundColor: '#111216', border: '1px solid #1f2937', borderRadius: '12px', padding: '20px' }}>
-            <h3 style={{ margin: '0 0 15px 0', fontSize: '1.1rem', color: '#fff' }}>Secure Telemetry Tunnel</h3>
+            <h3 style={{ margin: '0 0 15px 0', fontSize: '1.1rem', color: '#fff' }}>Secure Pipeline Configuration</h3>
             {selectedStation ? (
               <div>
-                <p style={{ fontSize: '0.85rem', color: '#a0aec0', marginBottom: '12px' }}>Target Node: <strong style={{ color: '#fff' }}>{selectedStation.name}</strong></p>
+                <p style={{ fontSize: '0.85rem', color: '#a0aec0', marginBottom: '12px' }}>Target: <strong style={{ color: '#fff' }}>{selectedStation.name}</strong></p>
                 <div style={{ background: '#1a1b20', padding: '12px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #2d3748' }}>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <span style={{ color: '#00e676', fontWeight: 'bold', fontSize: '0.8rem' }}>⏱️ Core Window:</span>
-                    <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 'bold' }}>1-Hour Base Route</span>
+                    <span style={{ color: '#00e676', fontWeight: 'bold', fontSize: '0.8rem' }}>⏱️ Target Arrival:</span>
+                    <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 'bold' }}>1-Hour Standard Limit</span>
                   </div>
                 </div>
                 <button onClick={() => executeBooking(selectedStation)} style={{ width: '100%', padding: '10px', backgroundColor: '#00e676', color: '#0a0a0c', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>
-                  Confirm IoT Allocation
+                  Confirm Booking
                 </button>
               </div>
             ) : (
               <div style={{ border: '2px dashed #2d3748', borderRadius: '8px', padding: '30px 20px', textAlign: 'center', color: '#718096', fontSize: '0.9rem' }}>
-                Select an available station node layout configuration to lock in localized telemetry pathways.
+                Select a platform station node layout configuration to secure grid space.
               </div>
             )}
           </div>
@@ -625,20 +589,20 @@ function App() {
             {activeBooking && (
               <div style={{ backgroundColor: isBufferPhase ? 'rgba(239, 68, 68, 0.05)' : 'rgba(0, 230, 118, 0.04)', border: isBufferPhase ? '1px solid #ef4444' : '1px solid #00e676', padding: '15px', borderRadius: '8px' }}>
                 <span style={{ fontSize: '0.75rem', color: isBufferPhase ? '#ef4444' : '#00e676', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                  ● {isBufferPhase ? 'Penalty Buffer Phase Active' : 'Allocation Secured'}
+                  ● {isBufferPhase ? 'Penalty Buffer Active' : 'Allocation Secured'}
                 </span>
                 <h4 style={{ margin: '5px 0 2px 0', color: '#fff' }}>{activeBooking.stationName}</h4>
-                <p style={{ margin: '0 0 15px 0', fontSize: '0.75rem', color: '#a0aec0' }}>IoT Handshake: {activeBooking.timeReserved}</p>
+                <p style={{ margin: '0 0 15px 0', fontSize: '0.75rem', color: '#a0aec0' }}>Estimated Arrival Deadline: 60 Minutes Target Window</p>
 
                 <div style={{ backgroundColor: '#1a1b20', border: '1px solid #2d3748', padding: '12px', borderRadius: '6px', marginBottom: '15px' }}>
                   {!isBufferPhase ? (
                     <div>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: '#a0aec0', marginBottom: '2px' }}>Simulated Core Arrival Time Left:</span>
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: '#a0aec0', marginBottom: '2px' }}>Target Arrival Time Remaining:</span>
                       <strong style={{ fontSize: '1.1rem', color: '#00e676' }}>{formatClock(bookingTimeRemaining)}</strong>
                     </div>
                   ) : (
                     <div>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', marginBottom: '2px' }}>⚠️ 15-Min Overtime Buffer Count:</span>
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', marginBottom: '2px' }}>⚠️ Overtime Rolling Penalty Buffer:</span>
                       <strong style={{ fontSize: '1.1rem', color: '#fff' }}>{formatClock(900 - bufferElapsedSeconds)} remaining</strong>
                       <div style={{ borderTop: '1px solid #2d3748', marginTop: '8px', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                         <span style={{ color: '#a0aec0' }}>Accrued Fine Balance:</span>
@@ -657,9 +621,9 @@ function App() {
             {freezeActive && !activeBooking && (
               <div style={{ backgroundColor: 'rgba(0, 230, 118, 0.08)', border: '1px dashed #00e676', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                 <span style={{ fontSize: '1.3rem' }}>🛡️</span>
-                <h4 style={{ margin: '5px 0', color: '#fff', fontSize: '0.9rem' }}>Exclusive 5-Minute Free Window Active</h4>
+                <h4 style={{ margin: '5px 0', color: '#fff', fontSize: '0.9rem' }}>Priority Rebook Window Active</h4>
                 <p style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: '#a0aec0', lineHeight: '1.4' }}>
-                  You have a 5-minute free time window to rebook this slot. The system has securely locked this station profile for your account.
+                  You have a 5-minute freeze window to modify or re-secure this specific slot node securely before public pool deployment.
                 </p>
                 <div style={{ display: 'inline-block', backgroundColor: '#00e676', color: '#0a0a0c', fontWeight: 'bold', padding: '4px 12px', borderRadius: '4px', fontSize: '0.95rem', fontFamily: 'monospace', marginBottom: '12px' }}>
                   ⏱️ Hold Lock: {formatClock(freezeTimer)}
@@ -670,7 +634,7 @@ function App() {
                   onClick={handleManualVoidFreeze}
                   style={{ width: '100%', padding: '8px', backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
                 >
-                  ❌ Void Freeze Advantage & Release Slot
+                  ❌ Void Advantage & Release Slot
                 </button>
               </div>
             )}
@@ -678,9 +642,9 @@ function App() {
             {freezeExpiredNotice && !freezeActive && !activeBooking && (
               <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px dashed #ef4444', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                 <span style={{ fontSize: '1.3rem' }}>⚠️</span>
-                <h4 style={{ margin: '5px 0', color: '#fff', fontSize: '0.9rem' }}>Your Free Time Window Has Expired</h4>
+                <h4 style={{ margin: '5px 0', color: '#fff', fontSize: '0.9rem' }}>Priority Rebook Lock Expired</h4>
                 <p style={{ margin: '0 0 0 0', fontSize: '0.75rem', color: '#a0aec0', lineHeight: '1.4' }}>
-                  We cannot guarantee priority slot protection anymore. Outside drivers can now intercept this resource pool. If you still require allocation path access, please select a node and rebook manually.
+                  Slot protection dropped. Outside drivers can now intercept this registry resource path.
                 </p>
               </div>
             )}
@@ -694,25 +658,18 @@ function App() {
         </div>
       </div>
 
-      {/* FIXED VIEWPORT SCROLLING REGISTRATION MODAL */}
+      {/* REGISTRATION MODAL */}
       {showRegister && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#111216', border: '1px solid #00e676', borderRadius: '12px', padding: '25px', maxWidth: '540px', width: '100%', textAlign: 'left', boxShadow: '0 20px 40px rgba(0,0,0,0.8)', maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0, color: '#fff' }}>Portal Node Registration Setup</h3>
+              <h3 style={{ margin: 0, color: '#fff' }}>Portal Node Registration</h3>
               <button type="button" onClick={() => setShowRegister(false)} style={{ background: 'transparent', border: 'none', color: '#718096', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
-            </div>
-
-            <div style={{ backgroundColor: '#1a271c', border: '1px solid #00e676', padding: '12px', borderRadius: '6px', marginBottom: '20px', fontSize: '0.75rem', color: '#a0aec0', lineHeight: '1.4' }}>
-              <strong style={{ color: '#00e676', display: 'block', marginBottom: '2px' }}>🛡️ Registration Settlement Mandate:</strong>
-              Account registration requires establishing a default settlement route. These channels manage structural penalties if arrival tracking exceeds core limits and drifts into the rolling buffer countdown.
             </div>
 
             <form onSubmit={handleRegisterSubmit} autoComplete="off">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-                
-                {/* FIELD 1: DRIVER NAME CONTAINER */}
-                <div style={{ position: 'relative' }}>
+                <div>
                   <label style={{ fontSize: '0.75rem', color: '#a0aec0', display: 'block', marginBottom: '6px' }}>Driver Full Name:</label>
                   <input 
                     type="text" 
@@ -720,29 +677,13 @@ function App() {
                     placeholder="e.g. John Doe" 
                     value={authInput.name} 
                     onChange={handleAuthChange} 
-                    onFocus={() => setShowNameSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowNameSuggestions(false), 250)}
                     required 
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', backgroundColor: '#1a1b20', border: errors.name ? '1px solid #ef4444' : '1px solid #2d3748', color: '#fff' }} 
                   />
-                  {errors.name ? (
-                    <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block', fontWeight: '500' }}>{errors.name}</span>
-                  ) : (
-                    <span style={{ fontSize: '0.65rem', color: '#718096', marginTop: '4px', display: 'block' }}>Letters only. Symbols/Numbers blocked.</span>
-                  )}
-
-                  {showNameSuggestions && pastRegistrations.length > 0 && (
-                    <div style={{ position: 'absolute', top: '65px', left: 0, right: 0, backgroundColor: '#1a1b20', border: '1px solid #2d3748', borderRadius: '6px', zIndex: 1100, maxHeight: '120px', overflowY: 'auto' }}>
-                      <span style={{ display: 'block', padding: '6px 10px', fontSize: '0.65rem', color: '#718096', borderBottom: '1px solid #2d3748' }}>PAST REGISTERED PROFILES</span>
-                      {pastRegistrations.map((profile, index) => (
-                        <div key={index} onMouseDown={() => applyPastProfileSuggestion(profile)} style={{ padding: '8px 10px', fontSize: '0.75rem', color: '#fff', cursor: 'pointer', borderBottom: '1px solid #111216' }}>{profile.name} ({profile.evNo})</div>
-                      ))}
-                    </div>
-                  )}
+                  {errors.name && <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block' }}>{errors.name}</span>}
                 </div>
 
-                {/* FIELD 2: EV ID CONTAINER */}
-                <div style={{ position: 'relative' }}>
+                <div>
                   <label style={{ fontSize: '0.75rem', color: '#a0aec0', display: 'block', marginBottom: '6px' }}>EV Registration ID:</label>
                   <input 
                     type="text" 
@@ -750,29 +691,13 @@ function App() {
                     placeholder="e.g. TN-47-AA-1234" 
                     value={authInput.evNo} 
                     onChange={handleAuthChange} 
-                    onFocus={() => setShowEvSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowEvSuggestions(false), 250)}
                     required 
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', backgroundColor: '#1a1b20', border: errors.evNo ? '1px solid #ef4444' : '1px solid #2d3748', color: '#fff' }} 
                   />
-                  {errors.evNo ? (
-                    <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block', fontWeight: '500' }}>{errors.evNo}</span>
-                  ) : (
-                    <span style={{ fontSize: '0.65rem', color: '#718096', marginTop: '4px', display: 'block' }}>Format example: TN-47-AA-1234</span>
-                  )}
-
-                  {showEvSuggestions && pastRegistrations.length > 0 && (
-                    <div style={{ position: 'absolute', top: '65px', left: 0, right: 0, backgroundColor: '#1a1b20', border: '1px solid #2d3748', borderRadius: '6px', zIndex: 1100, maxHeight: '120px', overflowY: 'auto' }}>
-                      <span style={{ display: 'block', padding: '6px 10px', fontSize: '0.65rem', color: '#718096', borderBottom: '1px solid #2d3748' }}>PAST EV RECORDS</span>
-                      {pastRegistrations.map((profile, index) => (
-                        <div key={index} onMouseDown={() => applyPastProfileSuggestion(profile)} style={{ padding: '8px 10px', fontSize: '0.75rem', color: '#fff', cursor: 'pointer', borderBottom: '1px solid #111216' }}>{profile.evNo} - {profile.name}</div>
-                      ))}
-                    </div>
-                  )}
+                  {errors.evNo && <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block' }}>{errors.evNo}</span>}
                 </div>
               </div>
 
-              {/* FIELD 3: MOBILE TELEPHONE CONTACT FIELD */}
               <div style={{ marginBottom: '15px' }}>
                 <label style={{ fontSize: '0.75rem', color: '#a0aec0', display: 'block', marginBottom: '6px' }}>Mobile Contact Number:</label>
                 <input 
@@ -785,14 +710,9 @@ function App() {
                   maxLength={10}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', backgroundColor: '#1a1b20', border: errors.phone ? '1px solid #ef4444' : '1px solid #2d3748', color: '#fff' }} 
                 />
-                {errors.phone ? (
-                  <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block', fontWeight: '500' }}>{errors.phone}</span>
-                ) : (
-                  <span style={{ fontSize: '0.65rem', color: '#718096', marginTop: '4px', display: 'block' }}>10-digit mobile line database profile entry (digits starting with 6-9).</span>
-                )}
+                {errors.phone && <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block' }}>{errors.phone}</span>}
               </div>
 
-              {/* FIELD 4: HUB CITY CONTAINER */}
               <div style={{ marginBottom: '15px' }}>
                 <label style={{ fontSize: '0.75rem', color: '#a0aec0', display: 'block', marginBottom: '6px' }}>Operating City Hub Node:</label>
                 <input 
@@ -803,86 +723,41 @@ function App() {
                   required 
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', backgroundColor: '#1a1b20', border: errors.city ? '1px solid #ef4444' : '1px solid #2d3748', color: '#fff' }} 
                 />
-                {errors.city ? (
-                  <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block', fontWeight: '500' }}>{errors.city}</span>
-                ) : (
-                  <span style={{ fontSize: '0.65rem', color: '#718096', marginTop: '4px', display: 'block' }}>Identifies your regional operating zone. Alphabet characters only.</span>
-                )}
+                {errors.city && <span style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '5px', display: 'block' }}>{errors.city}</span>}
               </div>
 
-              {/* FIELD 5: CUSTOM PAYMENT TOGGLES */}
               <div style={{ marginBottom: '20px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#fff', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Default Fine Collection Mode (Click active option to completely deselect):</label>
-                
-                {/* OPTION CARD 1 */}
-                <div onClick={() => handlePreferenceToggle('UPI_Lockout')} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: '#1a1b20', padding: '12px', borderRadius: '6px', marginBottom: '10px', cursor: 'pointer', border: authInput.paymentPreference === 'UPI_Lockout' ? '2px solid #00e676' : '1px solid #2d3748', transition: 'border 0.15s ease' }}>
-                  <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #2d3748', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '3px', backgroundColor: authInput.paymentPreference === 'UPI_Lockout' ? '#00e676' : 'transparent' }}>
-                    {authInput.paymentPreference === 'UPI_Lockout' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0a0a0c' }} />}
-                  </div>
+                <label style={{ fontSize: '0.8rem', color: '#fff', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Default Fine Collection Mode:</label>
+                <div onClick={() => handlePreferenceToggle('UPI_Lockout')} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: '#1a1b20', padding: '12px', borderRadius: '6px', marginBottom: '10px', cursor: 'pointer', border: authInput.paymentPreference === 'UPI_Lockout' ? '2px solid #00e676' : '1px solid #2d3748' }}>
                   <div style={{ fontSize: '0.75rem' }}>
                     <strong style={{ color: '#fff', display: 'block' }}>Option 1: Over-The-Counter Cash / On-Arrival UPI Gate</strong>
-                    <span style={{ color: '#a0aec0' }}>Pay accumulated buffer penalties directly upon destination entry or instantly via localized UPI links.</span>
+                    <span style={{ color: '#a0aec0' }}>Settle accumulated buffer parameters directly at arrival destination.</span>
                   </div>
                 </div>
 
-                {/* OPTION CARD 2 */}
-                <div onClick={() => handlePreferenceToggle('Wallet_Auto')} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: '#1a1b20', padding: '12px', borderRadius: '6px', cursor: 'pointer', border: authInput.paymentPreference === 'Wallet_Auto' ? '2px solid #00e676' : '1px solid #2d3748', transition: 'border 0.15s ease' }}>
-                  <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #2d3748', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '3px', backgroundColor: authInput.paymentPreference === 'Wallet_Auto' ? '#00e676' : 'transparent' }}>
-                    {authInput.paymentPreference === 'Wallet_Auto' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0a0a0c' }} />}
-                  </div>
+                <div onClick={() => handlePreferenceToggle('Wallet_Auto')} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: '#1a1b20', padding: '12px', borderRadius: '6px', cursor: 'pointer', border: authInput.paymentPreference === 'Wallet_Auto' ? '2px solid #00e676' : '1px solid #2d3748' }}>
                   <div style={{ fontSize: '0.75rem' }}>
                     <strong style={{ color: '#fff', display: 'block' }}>Option 2: Cloud Container Wallet (Auto-Deduct)</strong>
-                    <span style={{ color: '#a0aec0' }}>Authorizes backend system webhooks to instantly process transaction logs and debit balances securely from linked digital accounts automatically.</span>
+                    <span style={{ color: '#a0aec0' }}>Processes automatic ledger settlement webhooks.</span>
                   </div>
                 </div>
               </div>
 
-              {/* ACTION SUBMIT GATING BUTTON */}
-              <button 
-                type="submit" 
-                disabled={isFormInvalid}
-                style={{ width: '100%', padding: '12px', backgroundColor: isFormInvalid ? '#2d3748' : '#00e676', color: isFormInvalid ? '#718096' : '#0a0a0c', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: isFormInvalid ? 'not-allowed' : 'pointer', fontSize: '0.9rem', transition: 'background-color 0.2s' }}
-              >
-                {isFormInvalid ? "Resolve Validation Fields & Select Payment Mode to Enable" : "Accept Agreements & Save Profile Node"}
+              <button type="submit" disabled={isFormInvalid} style={{ width: '100%', padding: '12px', backgroundColor: isFormInvalid ? '#2d3748' : '#00e676', color: isFormInvalid ? '#718096' : '#0a0a0c', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: isFormInvalid ? 'not-allowed' : 'pointer', fontSize: '0.9rem' }}>
+                Accept Agreements & Save Profile Node
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* GLOBAL STATION DETAILS OVERLAY MODAL */}
+      {/* GLOBAL DIAGNOSTICS MODAL */}
       {selectedStationForModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1050,
-          backdropFilter: 'blur(4px)'
-        }}>
-          <div style={{
-            backgroundColor: '#111827',
-            border: '1px solid #1f2937',
-            borderRadius: '12px',
-            padding: '24px',
-            width: '90%',
-            maxWidth: '450px',
-            color: '#ffffff',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
-          }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1050, backdropFilter: 'blur(4px)' }}>
+          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '450px', color: '#ffffff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#10b981' }}>⚡ Station Telemetry</h3>
-              <button 
-                onClick={() => setSelectedStationForModal(null)}
-                style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '1.5rem', cursor: 'pointer' }}
-              >
-                &times;
-              </button>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#10b981' }}>⚡ Station Registry Metrics</h3>
+              <button onClick={() => setSelectedStationForModal(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '1.5rem', cursor: 'pointer' }}>&times;</button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -906,20 +781,7 @@ function App() {
               </div>
             </div>
 
-            <button 
-              onClick={() => setSelectedStationForModal(null)}
-              style={{
-                marginTop: '24px',
-                width: '100%',
-                backgroundColor: '#1f2937',
-                color: '#ffffff',
-                border: '1px solid #374151',
-                padding: '10px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '500'
-              }}
-            >
+            <button onClick={() => setSelectedStationForModal(null)} style={{ marginTop: '24px', width: '100%', backgroundColor: '#1f2937', color: '#ffffff', border: '1px solid #374151', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>
               Close Diagnostics
             </button>
           </div>
