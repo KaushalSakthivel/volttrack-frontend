@@ -287,7 +287,7 @@ function App() {
   };
 
   const handleMockLogin = () => {
-    const mockDriver = { name: "Kaushal Sakthivel", evNo: "TN-47-XX-9999", phone: "9474747474", city: "Karur", preference: "UPI_Lockout" };
+    const mockDriver = { name: "Aadhi", evNo: "TN-47-HE-6789", phone: "8123412341", city: "Karur", preference: "Wallet_Auto" };
     setCurrentUser(mockDriver);
     setIsLoggedIn(true);
   };
@@ -444,7 +444,7 @@ function App() {
           ) : (
             <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
               <span style={{ fontSize: '0.85rem', color: '#a0aec0' }}>Bound Terminal: <strong style={{ color: '#00e676' }}>{currentUser?.name} ({currentUser?.evNo})</strong></span>
-              <button onClick={() => { setIsLoggedIn(false); setActiveBooking(null); setFreezeActive(false); }} style={{ background: '#1f2937', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>Disconnect</button>
+              <button onClick={() => { setIsLoggedIn(false); setActiveBooking(null); setFreezeActive(false); setSelectedStation(null); }} style={{ background: '#1f2937', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>Disconnect</button>
             </div>
           )}
         </div>
@@ -539,7 +539,7 @@ function App() {
                       </td>
                       <td style={{ padding: '16px 12px', textAlign: 'right' }}>
                         <button 
-                          onClick={() => { setSelectedStationForModal(station); setSelectedStation(station); }}
+                          onClick={() => { setSelectedStation(station); }}
                           disabled={isFull && !isFrozenForMe}
                           style={{ padding: '8px 14px', backgroundColor: isFull && !isFrozenForMe ? '#2d3748' : '#00e676', color: isFull && !isFrozenForMe ? '#718096' : '#0a0a0c', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: isFull && !isFrozenForMe ? 'not-allowed' : 'pointer' }}
                         >
@@ -563,7 +563,7 @@ function App() {
                 <p style={{ fontSize: '0.85rem', color: '#a0aec0', marginBottom: '12px' }}>Target: <strong style={{ color: '#fff' }}>{selectedStation.name}</strong></p>
                 <div style={{ background: '#1a1b20', padding: '12px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #2d3748' }}>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <span style={{ color: '#00e676', fontWeight: 'bold', fontSize: '0.8rem' }}>⏱️ Target Arrival:</span>
+                    <span style={{ color: '#00e676', fontWeight: 'bold', fontSize: '0.8rem' }}>⏱️ Arrival Time:</span>
                     <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 'bold' }}>1-Hour Standard Limit</span>
                   </div>
                 </div>
@@ -732,43 +732,6 @@ function App() {
                 Accept Agreements & Save Profile Node
               </button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* GLOBAL DIAGNOSTICS MODAL */}
-      {selectedStationForModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1050, backdropFilter: 'blur(4px)' }}>
-          <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '450px', color: '#ffffff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#10b981' }}>⚡ Station Registry Metrics</h3>
-              <button onClick={() => setSelectedStationForModal(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '1.5rem', cursor: 'pointer' }}>&times;</button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>HUB NAME</span>
-                <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginTop: '2px' }}>{selectedStationForModal.name}</div>
-              </div>
-              <div>
-                <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>LOCATION</span>
-                <div style={{ fontSize: '0.95rem', marginTop: '2px' }}>{selectedStationForModal.location}</div>
-              </div>
-              <div style={{ display: 'flex', gap: '20px', marginTop: '4px' }}>
-                <div>
-                  <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>POWER CAPACITY</span>
-                  <div style={{ color: '#fbbf24', fontWeight: '600', marginTop: '2px' }}>{selectedStationForModal.power || '50 kW'}</div>
-                </div>
-                <div>
-                  <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>CHARGER TYPE</span>
-                  <div style={{ color: '#60a5fa', fontWeight: '600', marginTop: '2px' }}>{selectedStationForModal.type}</div>
-                </div>
-              </div>
-            </div>
-
-            <button onClick={() => setSelectedStationForModal(null)} style={{ marginTop: '24px', width: '100%', backgroundColor: '#1f2937', color: '#ffffff', border: '1px solid #374151', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>
-              Close Diagnostics
-            </button>
           </div>
         </div>
       )}
