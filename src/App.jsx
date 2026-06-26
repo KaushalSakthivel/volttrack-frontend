@@ -438,7 +438,6 @@ function App() {
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
           {!isLoggedIn ? (
             <>
-              <button onClick={handleMockLogin} style={{ background: 'transparent', border: 'none', color: '#00e676', cursor: 'pointer', fontWeight: '600' }}>Quick Sign In</button>
               <button onClick={handleOpenRegistrationWindow} style={{ backgroundColor: '#00e676', color: '#0a0a0c', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Register</button>
             </>
           ) : (
